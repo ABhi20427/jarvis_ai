@@ -3,6 +3,58 @@ import soundfile as sf
 import os
 import time
 
+def record_verification_phrases():
+    """Record specific phrases for better voice modeling"""
+    phrases = [
+        "Hello Jarvis, this is my voice authentication",
+        "Open my computer applications and files", 
+        "I am the authorized user of this system",
+        "Execute my voice commands securely",
+        "This is my unique voice signature"
+    ]
+    
+    print("\n" + "="*50)
+    print("RECORDING VERIFICATION PHRASES")
+    print("="*50)
+    print("We'll record you saying 5 different phrases.")
+    print("This helps create a more robust voice model.")
+    
+    sample_rate = 22050
+    duration = 4
+    
+    for i, phrase in enumerate(phrases):
+        print(f"\n--- Phrase {i+1}/5 ---")
+        print(f"Say: '{phrase}'")
+        print("Recording will start in 3 seconds...")
+        
+        for countdown in range(3, 0, -1):
+            print(f"{countdown}...")
+            time.sleep(1)
+        
+        print("🔴 RECORDING - SAY THE PHRASE NOW!")
+        
+        try:
+            recording = sd.rec(
+                int(duration * sample_rate), 
+                samplerate=sample_rate, 
+                channels=1,
+                dtype='float64'
+            )
+            sd.wait()
+            
+            # Save each phrase
+            filename = f"my_voice_phrase_{i+1}.wav"
+            sf.write(filename, recording, sample_rate, subtype='PCM_16')
+            print(f"✅ Phrase {i+1} recorded as {filename}")
+            
+        except Exception as e:
+            print(f"❌ Error recording phrase {i+1}: {e}")
+            
+        time.sleep(1)
+    
+    print("\n✅ All verification phrases recorded!")
+    return True
+
 def record_reference_voice():
     """Record multiple voice samples for better reference"""
     print("=" * 50)
@@ -122,6 +174,10 @@ def main():
     if record_reference_voice():
         # Test the recording
         if test_playback():
+            # NEW: Record additional verification phrases
+            add_phrases = input("\nWould you like to record verification phrases for better security? (y/n): ").lower().strip()
+            if add_phrases == 'y':
+                record_verification_phrases()
             print("\n🎉 Voice reference setup completed successfully!")
             print("You can now run the main Jarvis script.")
         else:

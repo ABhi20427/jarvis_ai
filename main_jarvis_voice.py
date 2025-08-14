@@ -25,18 +25,30 @@ class JarvisVoiceAssistant:
         engine.runAndWait()
 
     def initialize_voice_reference(self):
-        """Initialize voice reference if not already done"""
-        if os.path.exists("my_voice.wav") and not self.reference_trained:
-            print("Loading voice reference...")
-            if self.voice_matcher.train_reference("my_voice.wav"):
+        """Initialize voice reference with multiple samples"""
+        reference_files = [
+            "my_voice.wav",
+            "my_voice_sample_1.wav", 
+            "my_voice_sample_2.wav",
+            "my_voice_sample_3.wav"
+        ]
+        
+        # Check if we have at least the main reference
+        if os.path.exists("my_voice.wav"):
+            # Find all available reference files
+            available_files = [f for f in reference_files if os.path.exists(f)]
+            
+            print(f"Found {len(available_files)} reference files")
+            
+            if self.voice_matcher.train_multiple_references(available_files):
                 self.reference_trained = True
-                self.speak("Voice reference loaded successfully")
+                self.speak(f"Voice reference loaded with {len(available_files)} samples")
                 return True
             else:
-                self.speak("Failed to load voice reference. Please record a new reference.")
+                self.speak("Failed to load voice reference. Please record new samples.")
                 return False
-        elif not os.path.exists("my_voice.wav"):
-            self.speak("No voice reference found. Please record your voice first using record_reference.py")
+        else:
+            self.speak("No voice reference found. Please run record_reference.py first")
             return False
         return True
 
@@ -63,24 +75,51 @@ class JarvisVoiceAssistant:
             print(f"Error recording audio: {e}")
             return False
 
-    def test_voice_matching_debug(self, test_file):
-        """Debug version to see what's happening with voice matching"""
-        print("\n" + "="*50)
-        print("DEBUGGING VOICE MATCHING")
-        print("="*50)
+    def test_voice_matching_secure(self, test_file):
+        """Secure voice matching with stricter thresholds"""
+        print("\n" + "="*30)
+        print("SECURE VOICE AUTHENTICATION")
+        print("="*30)
         
-        # Test with very low thresholds
-        thresholds_to_test = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+        # Use higher, more secure thresholds
+        primary_threshold = 0.75  # Primary security threshold
+        fallback_threshold = 0.65  # Fallback threshold
         
-        for threshold in thresholds_to_test:
-            print(f"\nTesting with threshold: {threshold}")
-            result = self.voice_matcher.match_voice(test_file, threshold=threshold, detailed_output=True)
-            if result:
-                print(f"✅ MATCH found at threshold {threshold}!")
-                return True, threshold
+        # Test with enhanced features first, fall back to basic
+        try:
+            test_features = self.voice_matcher.extract_enhanced_features(test_file)
+            if test_features is None:
+                test_features = self.voice_matcher.extract_basic_features(test_file)
+        except:
+            test_features = self.voice_matcher.extract_basic_features(test_file)
         
-        print("❌ No match found at any threshold")
-        return False, None
+        if test_features is None:
+            print("❌ Could not extract voice features")
+            return False, 0.0
+        
+        # Use advanced similarity if available, otherwise fall back to basic
+        try:
+            if hasattr(self.voice_matcher, 'reference_samples'):
+                similarity_score = self.voice_matcher.calculate_advanced_similarity_score(test_features)
+            else:
+                similarity_score = self.voice_matcher.calculate_similarity_score(test_features)
+        except Exception as e:
+            print(f"Error in similarity calculation: {e}")
+            similarity_score = self.voice_matcher.calculate_similarity_score(test_features)
+        
+        print(f"Voice similarity score: {similarity_score:.4f}")
+        print(f"Primary threshold: {primary_threshold}")
+        print(f"Fallback threshold: {fallback_threshold}")
+        
+        if similarity_score >= primary_threshold:
+            print("✅ HIGH CONFIDENCE MATCH")
+            return True, similarity_score
+        elif similarity_score >= fallback_threshold:
+            print("⚠️  MEDIUM CONFIDENCE MATCH")
+            return True, similarity_score
+        else:
+            print("❌ AUTHENTICATION FAILED")
+            return False, similarity_score
 
     def recognize_command(self, file="test_voice.wav"):
         """Recognize speech with better error handling"""
@@ -224,12 +263,12 @@ class JarvisVoiceAssistant:
                     continue
                 
                 # DEBUG: Test voice matching with multiple thresholds
-                is_user, best_threshold = self.test_voice_matching_debug("test_voice.wav")
+                is_user, confidence_score = self.test_voice_matching_secure("test_voice.wav")
                 
                 if is_user:
                     # Reset failed attempts on successful match
                     self.failed_attempts = 0
-                    print(f"✅ Voice authenticated with threshold {best_threshold}")
+                    print(f"✅ Voice authenticated with confidence score {confidence_score:.4f}")
                     
                     # Recognize and execute command
                     cmd = self.recognize_command()
