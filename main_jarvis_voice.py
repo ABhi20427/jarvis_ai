@@ -5,18 +5,13 @@ import time
 import os
 import webbrowser
 import datetime
-from voice_matcher import EnhancedVoiceMatcher
 import pyttsx3
 
 engine = pyttsx3.init()
 
 class JarvisVoiceAssistant:
     def __init__(self):
-        self.voice_matcher = EnhancedVoiceMatcher()
-        self.reference_trained = False
-        self.failed_attempts = 0
-        self.max_failed_attempts = 3
-        self.recording_duration = 4  # Increased for better feature extraction
+        self.recording_duration = 4  # Duration for recording commands
         self.sample_rate = 22050     # Consistent sample rate
         
     def speak(self, text):
@@ -24,36 +19,10 @@ class JarvisVoiceAssistant:
         engine.say(text)
         engine.runAndWait()
 
-    def initialize_voice_reference(self):
-        """Initialize voice reference with multiple samples"""
-        reference_files = [
-            "my_voice.wav",
-            "my_voice_sample_1.wav", 
-            "my_voice_sample_2.wav",
-            "my_voice_sample_3.wav"
-        ]
-        
-        # Check if we have at least the main reference
-        if os.path.exists("my_voice.wav"):
-            # Find all available reference files
-            available_files = [f for f in reference_files if os.path.exists(f)]
-            
-            print(f"Found {len(available_files)} reference files")
-            
-            if self.voice_matcher.train_multiple_references(available_files):
-                self.reference_trained = True
-                self.speak(f"Voice reference loaded with {len(available_files)} samples")
-                return True
-            else:
-                self.speak("Failed to load voice reference. Please record new samples.")
-                return False
-        else:
-            self.speak("No voice reference found. Please run record_reference.py first")
-            return False
         return True
 
-    def record_for_match(self, filename="test_voice.wav"):
-        """Record audio with improved quality"""
+    def record_command(self, filename="command_voice.wav"):
+        """Record audio for command recognition"""
         print("Listening for command...")
         
         try:
@@ -68,7 +37,7 @@ class JarvisVoiceAssistant:
             
             # Save with high quality
             sf.write(filename, recording, self.sample_rate, subtype='PCM_16')
-            print("Voice captured successfully.")
+            print("Command captured successfully.")
             return True
             
         except Exception as e:
@@ -121,7 +90,7 @@ class JarvisVoiceAssistant:
             print("❌ AUTHENTICATION FAILED")
             return False, similarity_score
 
-    def recognize_command(self, file="test_voice.wav"):
+    def recognize_command(self, file="command_voice.wav"):
         """Recognize speech with better error handling"""
         r = sr.Recognizer()
         
@@ -247,44 +216,25 @@ class JarvisVoiceAssistant:
         return True
 
     def run(self):
-        """Main execution loop with improved error handling"""
+        """Main execution loop"""
         self.speak("Jarvis voice assistant starting up")
-        
-        # Initialize voice reference
-        if not self.initialize_voice_reference():
-            return
-        
         self.speak("I'm ready for your commands")
         
         while True:
             try:
                 # Record voice input
-                if not self.record_for_match():
+                if not self.record_command():
                     continue
                 
-                # DEBUG: Test voice matching with multiple thresholds
-                is_user, confidence_score = self.test_voice_matching_secure("test_voice.wav")
+                print("Processing command...")
                 
-                if is_user:
-                    # Reset failed attempts on successful match
-                    self.failed_attempts = 0
-                    print(f"✅ Voice authenticated with confidence score {confidence_score:.4f}")
-                    
-                    # Recognize and execute command
-                    cmd = self.recognize_command()
-                    if cmd != "none":
-                        if not self.execute_command(cmd):
-                            break  # Exit command received
-                    else:
-                        self.speak("I couldn't understand what you said. Please try again.")
+                # Recognize and execute command
+                cmd = self.recognize_command("command_voice.wav")
+                if cmd != "none":
+                    if not self.execute_command(cmd):
+                        break  # Exit command received
                 else:
-                    self.failed_attempts += 1
-                    print(f"❌ Voice not recognized. Access denied. (Attempt {self.failed_attempts}/{self.max_failed_attempts})")
-                    
-                    if self.failed_attempts >= self.max_failed_attempts:
-                        self.speak("Too many failed voice authentication attempts. Please try again later.")
-                        time.sleep(10)  # Cool-down period
-                        self.failed_attempts = 0
+                    self.speak("I couldn't understand what you said. Please try again.")
                 
                 # Brief pause between iterations
                 time.sleep(1)
