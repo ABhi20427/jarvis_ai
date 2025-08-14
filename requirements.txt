@@ -1,0 +1,12 @@
+SpeechRecognition
+pyaudio
+numpy
+scipy
+librosa
+soundfile
+sounddevice
+scikit-learn
+pyttsx3
+pandas
+matplotlib  # For optional voice analysis visualization
+joblib      # For model persistence if needed
