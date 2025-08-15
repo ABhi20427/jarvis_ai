@@ -1,4 +1,6 @@
 
+from typing import Dict
+
 import sounddevice as sd
 import soundfile as sf
 import speech_recognition as sr
@@ -16,6 +18,10 @@ import random
 import psutil
 import requests
 from pathlib import Path
+
+# Add after existing imports
+from ai_brain_local import JarvisLocalAI
+from config import AIConfig
 
 # Initialize TTS engine with better error handling
 try:
@@ -58,6 +64,9 @@ class EnhancedJarvis:
         self.command_history = []
         self.context = {}
         
+        # Initialize AI Brain
+        self.init_ai_brain()
+        
         # Wake words
         self.wake_words = ["jarvis", "hey jarvis", "okay jarvis", "computer"]
         
@@ -66,6 +75,24 @@ class EnhancedJarvis:
         
         print("🤖 Enhanced Jarvis System Initializing...")
         self.startup_sequence()
+
+    def init_ai_brain(self):
+        """Initialize the AI brain"""
+        if AIConfig.ENABLE_AI:
+            try:
+                self.ai = JarvisLocalAI(model=AIConfig.AI_MODEL)
+                if self.ai.is_available:
+                    self.ai_enabled = True
+                    print("🧠 AI Brain initialized successfully")
+                    self.speak("AI capabilities online. I'm now smarter than ever.", wait=False)
+                else:
+                    self.ai_enabled = False
+                    print("⚠️ AI Brain offline - Ollama not running")
+            except Exception as e:
+                print(f"❌ AI Brain initialization failed: {e}")
+                self.ai_enabled = False
+        else:
+            self.ai_enabled = False
 
     def init_responses(self):
         """Initialize varied responses for better interaction"""
@@ -114,37 +141,44 @@ class EnhancedJarvis:
             time.sleep(0.5)
 
     def speak(self, text, wait=True, priority=False):
-        """Simple and reliable TTS method"""
+        """Fixed TTS method without run loop conflicts"""
         print(f"🔊 Jarvis: {text}")
         
         try:
-            # Create a fresh engine instance for each speak operation
-            # This prevents blocking issues
-            speak_engine = pyttsx3.init()
-            speak_engine.setProperty('rate', 180)
-            speak_engine.setProperty('volume', 0.9)
+            # Method: Use a separate thread for each speak operation
+            def speak_thread():
+                try:
+                    # Create a fresh engine for this operation
+                    temp_engine = pyttsx3.init()
+                    temp_engine.setProperty('rate', 180)
+                    temp_engine.setProperty('volume', 0.9)
+                    temp_engine.say(text)
+                    temp_engine.runAndWait()
+                    # Important: Clean up the engine
+                    temp_engine.stop()
+                    del temp_engine
+                except RuntimeError as e:
+                    if "run loop already started" in str(e):
+                        # If run loop error, just print
+                        print(f"[TTS Skipped - Engine Busy]: {text}")
+                    else:
+                        print(f"TTS Thread Error: {e}")
+                except Exception as e:
+                    print(f"TTS Error: {e}")
             
-            if priority:
-                # For priority messages, we just speak immediately
-                speak_engine.say(text)
-                speak_engine.runAndWait()
-            elif wait:
-                # Blocking speech
-                speak_engine.say(text)
-                speak_engine.runAndWait()
+            if wait:
+                # Blocking speech - run in current thread
+                speak_thread()
             else:
-                # Non-blocking speech in a thread
-                def speak_async():
-                    async_engine = pyttsx3.init()
-                    async_engine.setProperty('rate', 180)
-                    async_engine.say(text)
-                    async_engine.runAndWait()
-                
-                threading.Thread(target=speak_async, daemon=True).start()
-                
+                # Non-blocking speech - run in separate thread
+                import threading
+                thread = threading.Thread(target=speak_thread, daemon=True)
+                thread.start()
+                if priority:
+                    thread.join()  # Wait for priority messages
+                    
         except Exception as e:
             print(f"❌ TTS Error: {e}")
-            # Fallback: at least print the message
             print(f"[TTS Failed] Would have said: {text}")
 
     def get_random_response(self, response_type):
@@ -210,10 +244,10 @@ class EnhancedJarvis:
             return None
 
     def process_command(self, command):
-        """Enhanced command processing with context awareness"""
+        """Enhanced command processing with AI understanding"""
         if not command:
             return True
-            
+        
         # Store command in history
         self.command_history.append({
             'command': command,
@@ -224,15 +258,35 @@ class EnhancedJarvis:
         # Log command
         print(f"📝 Command: {command}")
         
-        # Add window switching commands
+        # Try AI processing first if enabled
+        if self.ai_enabled:
+            print("🧠 Processing with AI...")
+            ai_result = self.ai.process_command(command)
+            
+            if ai_result['success']:
+                # Speak AI response
+                self.speak(ai_result['response'])
+                
+                # Execute extracted actions
+                for action in ai_result['actions']:
+                    self.execute_ai_action(action)
+                
+                # AI handled it successfully
+                return True
+            else:
+                print("⚠️ AI processing failed, falling back to rule-based")
+        
+        # Fallback to original rule-based processing
+        return self.process_command_classic(command)
+    
+    def process_command_classic(self, command):
+        """Original rule-based command processing (fallback)"""
+        # Your existing command processing code
         if "next window" in command or "alt tab" in command:
             self.switch_windows_alt_tab("forward")
             return True
-        elif "previous window" in command:
-            self.switch_windows_alt_tab("backward")
-            return True
+        # ... rest of your existing check_* methods
         
-        # Process based on command categories
         if self.check_system_commands(command):
             return True
         elif self.check_application_commands(command):
@@ -248,6 +302,239 @@ class EnhancedJarvis:
         else:
             self.handle_unknown_command(command)
             return True
+    def execute_ai_action(self, action: Dict):
+        """Execute actions extracted by AI"""
+        action_type = action.get('type', '').upper()
+        
+        print(f"🎯 Executing AI action: {action_type}")
+        
+        try:
+            if action_type == "OPEN_APP":
+                app = action.get('app', '')
+                self.open_application_smart(app)
+                
+            elif action_type == "SEARCH_WEB":
+                query = action.get('query', '')
+                webbrowser.open(f"https://google.com/search?q={query}")
+                
+            elif action_type == "SEARCH_YOUTUBE":
+                query = action.get('query', '')
+                webbrowser.open(f"https://youtube.com/results?search_query={query}")
+                
+            elif action_type == "OPEN_WEBSITE":
+                url = action.get('url', '')
+                webbrowser.open(url)
+                
+            elif action_type == "TYPE_TEXT":
+                text = action.get('text', '')
+                self.type_text(text)
+                
+            elif action_type == "TAKE_SCREENSHOT":
+                self.take_screenshot()
+                
+            elif action_type == "SYSTEM_INFO":
+                info_type = action.get('params', '').lower()
+                if 'battery' in info_type:
+                    self.get_battery_status()
+                elif 'cpu' in info_type:
+                    cpu_percent = psutil.cpu_percent(interval=1)
+                    self.speak(f"CPU usage is at {cpu_percent} percent")
+                elif 'memory' in info_type:
+                    memory = psutil.virtual_memory()
+                    self.speak(f"Memory usage is at {memory.percent} percent")
+                    
+            elif action_type == "OPEN_FOLDER":
+                folder = action.get('folder', '')
+                self.open_folder_smart(folder)
+                
+            elif action_type == "CONTROL_VOLUME":
+                direction = action.get('direction', '')
+                if 'up' in direction:
+                    self.adjust_volume(10)
+                elif 'down' in direction:
+                    self.adjust_volume(-10)
+                elif 'mute' in direction:
+                    self.toggle_mute(True)
+                    
+            elif action_type == "SWITCH_APP":
+                app = action.get('app', '')
+                self.switch_to_application(app)
+                
+            elif action_type == "WINDOW_CONTROL":
+                operation = action.get('operation', '')
+                self.control_window(operation)
+                
+        except Exception as e:
+            print(f"❌ Error executing AI action: {e}")
+    
+    def switch_to_application(self, app_name: str):
+        """Enhanced window switching with better app detection"""
+        try:
+            import pygetwindow as gw
+            import pyautogui
+            import time
+            
+            print(f"🔍 Looking for application: {app_name}")
+            
+            # Get all windows
+            windows = gw.getAllWindows()
+            
+            # App name mappings for better matching
+            app_keywords = {
+                'chrome': ['chrome', 'google chrome'],
+                'firefox': ['firefox', 'mozilla'],
+                'edge': ['edge', 'microsoft edge'],
+                'code': ['visual studio code', 'vscode', 'vs code', 'code'],
+                'notepad': ['notepad'],
+                'explorer': ['explorer', 'file explorer'],
+                'spotify': ['spotify'],
+                'discord': ['discord'],
+                'terminal': ['terminal', 'command prompt', 'cmd', 'powershell'],
+                'outlook': ['outlook'],
+                'teams': ['teams', 'microsoft teams'],
+                'slack': ['slack'],
+                'excel': ['excel'],
+                'word': ['word'],
+                'powerpoint': ['powerpoint'],
+                'whatsapp': ['whatsapp'],
+                'telegram': ['telegram']
+            }
+            
+            # Find matching keyword set
+            target_keywords = []
+            for app, keywords in app_keywords.items():
+                if any(kw in app_name.lower() for kw in keywords):
+                    target_keywords = keywords
+                    break
+            
+            if not target_keywords:
+                target_keywords = [app_name.lower()]
+            
+            print(f"🔎 Searching with keywords: {target_keywords}")
+            
+            # Try to find and activate the window
+            for window in windows:
+                if window.title:  # Skip windows with empty titles
+                    window_title_lower = window.title.lower()
+                    
+                    # Check if any keyword matches
+                    for keyword in target_keywords:
+                        if keyword in window_title_lower:
+                            try:
+                                print(f"✅ Found window: {window.title}")
+                                
+                                # Different activation methods for reliability
+                                if window.isMinimized:
+                                    window.restore()
+                                
+                                window.activate()
+                                time.sleep(0.1)  # Small delay for window to activate
+                                
+                                # Force focus with pyautogui click
+                                if window.left >= 0 and window.top >= 0:
+                                    pyautogui.click(window.left + 100, window.top + 50)
+                                
+                                self.speak(f"Switched to {app_name}")
+                                return True
+                                
+                            except Exception as e:
+                                print(f"⚠️ Could not activate {window.title}: {e}")
+                                continue
+            
+            # If not found, try to open it
+            print(f"❌ Window not found for: {app_name}")
+            self.speak(f"{app_name} is not running. Let me open it for you.")
+            self.open_application_smart(app_name)
+            return False
+            
+        except ImportError:
+            self.speak("Window switching requires pygetwindow. Please install it.")
+            return False
+        except Exception as e:
+            print(f"❌ Window switching error: {e}")
+            self.speak(f"Could not switch to {app_name}")
+            return False
+    
+    def open_application_smart(self, app_name: str):
+        """Smart application opener with fuzzy matching"""
+        app_map = {
+            'chrome': 'chrome',
+            'firefox': 'firefox',
+            'edge': 'msedge',
+            'notepad': 'notepad',
+            'calculator': 'calc',
+            'vscode': 'code',
+            'visual studio': 'code',
+            'spotify': 'spotify',
+            'discord': 'discord',
+            'terminal': 'cmd',
+            'command prompt': 'cmd',
+            'explorer': 'explorer',
+            'file explorer': 'explorer'
+        }
+        
+        # Fuzzy match
+        for key, value in app_map.items():
+            if key in app_name.lower():
+                os.system(f"start {value}")
+                return
+        
+        # Try direct launch
+        os.system(f"start {app_name}")
+    
+    def open_folder_smart(self, folder_name: str):
+        """Smart folder opener"""
+        folder_map = {
+            'documents': os.path.expanduser("~/Documents"),
+            'downloads': os.path.expanduser("~/Downloads"),
+            'desktop': os.path.expanduser("~/Desktop"),
+            'pictures': os.path.expanduser("~/Pictures"),
+            'videos': os.path.expanduser("~/Videos"),
+            'music': os.path.expanduser("~/Music")
+        }
+        
+        folder_path = folder_map.get(folder_name.lower(), os.path.expanduser("~"))
+        os.startfile(folder_path)
+    
+    def type_text(self, text: str):
+        """Type text using pyautogui"""
+        try:
+            import pyautogui
+            pyautogui.typewrite(text, interval=0.05)
+        except ImportError:
+            self.speak("Text typing requires pyautogui. Please install it.")
+    
+    
+    def control_window(self, operation: str):
+        """Control current window with better error handling"""
+        try:
+            import pyautogui
+            import pygetwindow as gw
+            
+            # Get the active window
+            active_window = gw.getActiveWindow()
+            
+            if active_window:
+                if 'minimize' in operation:
+                    active_window.minimize()
+                    self.speak("Window minimized")
+                elif 'maximize' in operation:
+                    active_window.maximize()
+                    self.speak("Window maximized")
+                elif 'close' in operation:
+                    pyautogui.hotkey('alt', 'f4')
+                    self.speak("Window closed")
+                elif 'restore' in operation:
+                    active_window.restore()
+                    self.speak("Window restored")
+            else:
+                self.speak("No active window found")
+                
+        except ImportError:
+            self.speak("Window control requires pyautogui and pygetwindow")
+        except Exception as e:
+            print(f"❌ Window control error: {e}")
+            self.speak("Could not control the window")
 
     def check_system_commands(self, command):
         """Handle system-level commands"""

@@ -44,11 +44,12 @@ class Config:
     PICTURES_DIR = HOME_DIR / "Pictures"
     JARVIS_DIR = HOME_DIR / ".jarvis"  # Hidden directory for Jarvis data
     
-    # Create Jarvis directory if it doesn't exist
+    # Create necessary directories if they don't exist
     JARVIS_DIR.mkdir(exist_ok=True)
+    PICTURES_DIR.mkdir(exist_ok=True)
     
     SCREENSHOT_DIR = PICTURES_DIR / "Screenshots"
-    SCREENSHOT_DIR.mkdir(exist_ok=True)
+    SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
     
     LOG_FILE = JARVIS_DIR / "jarvis.log"
     COMMANDS_HISTORY = JARVIS_DIR / "commands_history.json"
@@ -185,3 +186,26 @@ class Config:
                 json.dump(preferences, f, indent=4)
         except Exception as e:
             print(f"Error saving preferences: {e}")
+
+# AI Configuration
+class AIConfig:
+    """AI Brain Configuration"""
+    # Model selection
+    AI_MODEL = "mistral"  # Options: "mistral", "llama2", "codellama"
+    
+    # AI Features
+    ENABLE_AI = True
+    AI_CONFIDENCE_THRESHOLD = 0.7
+    MAX_CONTEXT_HISTORY = 10
+    
+    # AI Response Settings
+    AI_TEMPERATURE = 0.7  # 0.0-1.0, higher = more creative
+    AI_MAX_TOKENS = 500
+    
+    # Proactive suggestions
+    ENABLE_SUGGESTIONS = True
+    SUGGESTION_INTERVAL = 300  # seconds between suggestions
+    
+    # Learning
+    ENABLE_LEARNING = True
+    LEARNING_FILE = Config.JARVIS_DIR / "ai_learning.json"
