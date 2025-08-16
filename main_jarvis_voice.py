@@ -1,6 +1,4 @@
-
 from typing import Dict
-
 import sounddevice as sd
 import soundfile as sf
 import speech_recognition as sr
@@ -18,6 +16,8 @@ import random
 import psutil
 import requests
 from pathlib import Path
+import pygetwindow as gw
+import pyautogui
 
 # Add after existing imports
 from ai_brain_local import JarvisLocalAI
@@ -73,8 +73,55 @@ class EnhancedJarvis:
         # Initialize responses
         self.init_responses()
         
+        # Build command cache for faster processing
+        self._build_command_cache()
+        
+        # Optimize performance
+        self._optimize_performance()
+        
         print("🤖 Enhanced Jarvis System Initializing...")
         self.startup_sequence()
+
+    def _optimize_performance(self):
+        """Optimize system performance for voice processing"""
+        try:
+            import threading
+            import gc
+            
+            # Set thread priorities for audio processing
+            audio_thread = threading.current_thread()
+            if hasattr(audio_thread, 'set_priority'):
+                audio_thread.set_priority('high')
+            
+            # Optimize garbage collection
+            gc.set_threshold(700, 10, 10)  # More aggressive GC
+            
+            # Pre-import heavy modules
+            self._preload_modules()
+            
+        except Exception as e:
+            print(f"⚠️ Performance optimization failed: {e}")
+
+    def _preload_modules(self):
+        """Preload commonly used modules for faster access"""
+        try:
+            import webbrowser
+            import datetime
+            import subprocess
+            import psutil
+            # Preload in background thread to avoid blocking
+            threading.Thread(target=self._background_preload, daemon=True).start()
+        except Exception as e:
+            print(f"⚠️ Module preloading failed: {e}")
+
+    def _background_preload(self):
+        """Background preloading of heavy modules"""
+        try:
+            import numpy as np
+            import scipy.signal
+            import difflib
+        except ImportError:
+            pass  # Optional modules
 
     def init_ai_brain(self):
         """Initialize the AI brain"""
@@ -125,6 +172,84 @@ class EnhancedJarvis:
                 "I'm ready for your command."
             ]
         }
+
+    def _build_command_cache(self):
+        """Build a cache of commands for faster processing"""
+        self.command_cache = {
+            # System commands
+            'shutdown': ['shutdown', 'shut down', 'power off'],
+            'restart': ['restart', 'reboot'],
+            'lock': ['lock', 'lock screen', 'lock computer'],
+            'sleep': ['sleep', 'sleep mode', 'hibernate'],
+            
+            # Applications (most common first)
+            'chrome': ['chrome', 'google chrome', 'browser'],
+            'firefox': ['firefox', 'mozilla'],
+            'vscode': ['vs code', 'visual studio code', 'vscode', 'code'],
+            'notepad': ['notepad', 'text editor'],
+            'calculator': ['calculator', 'calc'],
+            'explorer': ['explorer', 'file explorer', 'files'],
+            'cmd': ['command prompt', 'cmd', 'terminal'],
+            
+            # Web commands
+            'youtube': ['youtube', 'you tube'],
+            'google': ['google', 'search google'],
+            'gmail': ['gmail', 'email'],
+            
+            # System info
+            'time': ['time', 'what time', 'current time'],
+            'date': ['date', 'today', 'what date'],
+            'battery': ['battery', 'power status'],
+            'cpu': ['cpu', 'processor', 'cpu usage'],
+            'memory': ['memory', 'ram', 'memory usage'],
+            
+            # Volume
+            'volume_up': ['volume up', 'increase volume', 'louder'],
+            'volume_down': ['volume down', 'decrease volume', 'quieter'],
+            'mute': ['mute', 'silence'],
+            'unmute': ['unmute', 'sound on'],
+            
+            # File operations
+            'screenshot': ['screenshot', 'screen shot', 'capture screen'],
+            'documents': ['documents', 'documents folder'],
+            'downloads': ['downloads', 'downloads folder'],
+            'desktop': ['desktop', 'desktop folder']
+        }
+        
+        # Build reverse lookup for faster matching
+        self.keyword_to_command = {}
+        for command, keywords in self.command_cache.items():
+            for keyword in keywords:
+                self.keyword_to_command[keyword] = command
+
+    def _fast_command_match(self, command):
+        """Fast command matching using cache"""
+        # Direct keyword match
+        if command in self.keyword_to_command:
+            return self.keyword_to_command[command]
+        
+        # Partial match
+        for keyword, mapped_command in self.keyword_to_command.items():
+            if keyword in command:
+                return mapped_command
+        
+        # Fuzzy match for close matches
+        return self._fuzzy_command_match(command)
+
+    def _fuzzy_command_match(self, command):
+        """Fuzzy matching for similar commands"""
+        from difflib import SequenceMatcher
+        
+        best_match = None
+        best_score = 0.7  # Threshold for fuzzy matching
+        
+        for keyword in self.keyword_to_command.keys():
+            similarity = SequenceMatcher(None, command, keyword).ratio()
+            if similarity > best_score:
+                best_score = similarity
+                best_match = self.keyword_to_command[keyword]
+        
+        return best_match
 
     def startup_sequence(self):
         """Jarvis-like startup sequence"""
@@ -186,62 +311,174 @@ class EnhancedJarvis:
         return random.choice(self.responses.get(response_type, ["Processing..."]))
 
     def listen_for_audio(self, timeout=None, phrase_limit=None):
-        """Enhanced listening with better error handling"""
+        """Enhanced listening with noise reduction and better audio processing"""
         try:
             with sr.Microphone(sample_rate=self.sample_rate) as source:
-                # Adjust for ambient noise quickly
-                self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                # Dynamic noise adjustment
+                print("🔧 Calibrating microphone...")
+                self.recognizer.adjust_for_ambient_noise(source, duration=1.0)
+                
+                # Optimize recognition settings
+                self.recognizer.energy_threshold = max(300, self.recognizer.energy_threshold)
+                self.recognizer.pause_threshold = 0.8
+                self.recognizer.phrase_threshold = 0.3
+                self.recognizer.non_speaking_duration = 0.5
                 
                 print("🎤 Listening...")
                 self.is_listening = True
                 
-                # Add visual/audio feedback
-                self.play_sound("listening")  # Optional: Add a listening sound
-                
-                audio = self.recognizer.listen(
-                    source,
-                    timeout=timeout,
-                    phrase_time_limit=phrase_limit
-                )
-                
-                self.is_listening = False
-                return audio
-                
-        except sr.WaitTimeoutError:
-            self.is_listening = False
-            return None
+                # Record with better error handling
+                try:
+                    audio = self.recognizer.listen(
+                        source,
+                        timeout=timeout or 5,
+                        phrase_time_limit=phrase_limit or 10
+                    )
+                    
+                    # Audio preprocessing
+                    audio = self._preprocess_audio(audio)
+                    
+                    self.is_listening = False
+                    return audio
+                    
+                except sr.WaitTimeoutError:
+                    print("⏰ Listening timeout")
+                    self.is_listening = False
+                    return None
+                    
         except Exception as e:
             print(f"❌ Microphone error: {e}")
             self.is_listening = False
             return None
 
+    def _preprocess_audio(self, audio):
+        """Preprocess audio for better recognition"""
+        try:
+            import numpy as np
+            from scipy import signal
+            
+            # Convert to numpy array
+            audio_data = np.frombuffer(audio.get_raw_data(), np.int16)
+            
+            # Apply noise reduction (simple high-pass filter)
+            # Remove low-frequency noise
+            nyquist = self.sample_rate // 2
+            low_cutoff = 300 / nyquist
+            b, a = signal.butter(4, low_cutoff, btype='high')
+            filtered_audio = signal.filtfilt(b, a, audio_data)
+            
+            # Normalize audio levels
+            filtered_audio = filtered_audio / np.max(np.abs(filtered_audio))
+            filtered_audio = (filtered_audio * 32767).astype(np.int16)
+            
+            # Convert back to AudioData
+            processed_audio = sr.AudioData(
+                filtered_audio.tobytes(),
+                audio.sample_rate,
+                audio.sample_width
+            )
+            
+            return processed_audio
+            
+        except ImportError:
+            print("⚠️ scipy not available, using raw audio")
+            return audio
+        except Exception as e:
+            print(f"⚠️ Audio preprocessing failed: {e}")
+            return audio
+
     def recognize_speech(self, audio):
-        """Enhanced speech recognition with multiple engines fallback"""
+        """Enhanced speech recognition with multiple engines and preprocessing"""
         if audio is None:
             return None
-            
-        try:
-            # Primary: Google Speech Recognition
-            text = self.recognizer.recognize_google(audio, language='en-US')
-            return text.lower()
-            
-        except sr.UnknownValueError:
-            # Try alternative recognition if Google fails
+        
+        # Try multiple recognition engines in order of preference
+        recognition_methods = [
+            ('Google', self._recognize_google),
+            ('Google Cloud', self._recognize_google_cloud),
+            ('Sphinx', self._recognize_sphinx),
+            ('Wit.ai', self._recognize_wit)
+        ]
+        
+        for method_name, method in recognition_methods:
             try:
-                # Fallback to Sphinx (offline)
-                text = self.recognizer.recognize_sphinx(audio)
-                return text.lower()
-            except:
-                return None
-                
-        except sr.RequestError as e:
-            print(f"❌ Recognition service error: {e}")
-            self.speak("I'm having trouble with the recognition service.")
-            return None
-            
-        except Exception as e:
-            print(f"❌ Unexpected recognition error: {e}")
-            return None
+                text = method(audio)
+                if text:
+                    # Clean and normalize the text
+                    text = self._clean_recognized_text(text)
+                    print(f"✅ Recognition ({method_name}): {text}")
+                    return text
+            except Exception as e:
+                print(f"⚠️ {method_name} recognition failed: {e}")
+                continue
+        
+        print("❌ All recognition methods failed")
+        return None
+
+    def _recognize_google(self, audio):
+        """Google Speech Recognition with enhanced settings"""
+        return self.recognizer.recognize_google(
+            audio, 
+            language='en-US',
+            show_all=False
+        ).lower()
+
+    def _recognize_google_cloud(self, audio):
+        """Google Cloud Speech (if API key available)"""
+        # Add your Google Cloud credentials if available
+        return self.recognizer.recognize_google_cloud(audio, language='en-US').lower()
+
+    def _recognize_sphinx(self, audio):
+        """Offline Sphinx recognition"""
+        return self.recognizer.recognize_sphinx(audio).lower()
+
+    def _recognize_wit(self, audio):
+        """Wit.ai recognition (if API key available)"""
+        # Add your Wit.ai key if available
+        WIT_AI_KEY = ""  # Add your key here
+        if WIT_AI_KEY:
+            return self.recognizer.recognize_wit(audio, key=WIT_AI_KEY).lower()
+        return None
+
+    def _clean_recognized_text(self, text):
+        """Clean and normalize recognized text"""
+        import re
+        
+        # Convert to lowercase
+        text = text.lower().strip()
+        
+        # Remove filler words and normalize
+        filler_words = ['um', 'uh', 'er', 'ah', 'like']
+        words = text.split()
+        words = [word for word in words if word not in filler_words]
+        
+        # Fix common recognition errors
+        corrections = {
+            'jarvis': ['jervis', 'jarvish', 'jarvas'],
+            'chrome': ['crome', 'chrom'],
+            'firefox': ['fire fox', 'firefix'],
+            'calculator': ['calc', 'calculator'],
+            'youtube': ['you tube', 'youtub'],
+            'screenshot': ['screen shot', 'screan shot'],
+            'volume': ['volum', 'valume'],
+            'open': ['oper', 'oppen'],
+            'close': ['clos', 'cloes'],
+            'switch': ['swich', 'swithc']
+        }
+        
+        # Apply corrections
+        corrected_words = []
+        for word in words:
+            corrected = False
+            for correct, variants in corrections.items():
+                if word in variants:
+                    corrected_words.append(correct)
+                    corrected = True
+                    break
+            if not corrected:
+                corrected_words.append(word)
+        
+        return ' '.join(corrected_words)
 
     def process_command(self, command):
         """Enhanced command processing with AI understanding"""
@@ -302,6 +539,7 @@ class EnhancedJarvis:
         else:
             self.handle_unknown_command(command)
             return True
+
     def execute_ai_action(self, action: Dict):
         """Execute actions extracted by AI"""
         action_type = action.get('type', '').upper()
@@ -366,95 +604,114 @@ class EnhancedJarvis:
                 
         except Exception as e:
             print(f"❌ Error executing AI action: {e}")
-    
+
     def switch_to_application(self, app_name: str):
-        """Enhanced window switching with better app detection"""
+        """Enhanced window switching with better detection and fallback"""
         try:
-            import pygetwindow as gw
-            import pyautogui
-            import time
-            
             print(f"🔍 Looking for application: {app_name}")
             
-            # Get all windows
-            windows = gw.getAllWindows()
+            # Get all windows efficiently
+            windows = []
+            try:
+                for window in gw.getAllWindows():
+                    if window.title and window.title.strip() and not window.title.isspace():
+                        windows.append(window)
+            except Exception as e:
+                print(f"Error getting windows: {e}")
+                return False
             
-            # App name mappings for better matching
+            if not windows:
+                self.speak(f"No windows found. Opening {app_name} instead.")
+                self.open_application_smart(app_name)
+                return True
+            
+            # Enhanced app keyword mapping
             app_keywords = {
-                'chrome': ['chrome', 'google chrome'],
-                'firefox': ['firefox', 'mozilla'],
+                'chrome': ['chrome', 'google chrome', 'chromium'],
+                'firefox': ['firefox', 'mozilla firefox'],
                 'edge': ['edge', 'microsoft edge'],
                 'code': ['visual studio code', 'vscode', 'vs code', 'code'],
-                'notepad': ['notepad'],
-                'explorer': ['explorer', 'file explorer'],
+                'notepad': ['notepad', 'notepad++'],
+                'explorer': ['explorer', 'file explorer', 'windows explorer'],
                 'spotify': ['spotify'],
                 'discord': ['discord'],
-                'terminal': ['terminal', 'command prompt', 'cmd', 'powershell'],
-                'outlook': ['outlook'],
+                'terminal': ['terminal', 'command prompt', 'cmd', 'powershell', 'windows terminal'],
+                'outlook': ['outlook', 'microsoft outlook'],
                 'teams': ['teams', 'microsoft teams'],
                 'slack': ['slack'],
-                'excel': ['excel'],
-                'word': ['word'],
-                'powerpoint': ['powerpoint'],
+                'excel': ['excel', 'microsoft excel'],
+                'word': ['word', 'microsoft word'],
+                'powerpoint': ['powerpoint', 'microsoft powerpoint'],
+                'zoom': ['zoom', 'zoom meetings'],
                 'whatsapp': ['whatsapp'],
-                'telegram': ['telegram']
+                'telegram': ['telegram'],
+                'calculator': ['calculator', 'calc'],
+                'paint': ['paint', 'mspaint', 'microsoft paint']
             }
             
-            # Find matching keyword set
-            target_keywords = []
-            for app, keywords in app_keywords.items():
-                if any(kw in app_name.lower() for kw in keywords):
-                    target_keywords = keywords
-                    break
-            
-            if not target_keywords:
-                target_keywords = [app_name.lower()]
+            # Find matching keywords
+            target_keywords = app_keywords.get(app_name.lower(), [app_name.lower()])
             
             print(f"🔎 Searching with keywords: {target_keywords}")
             
-            # Try to find and activate the window
+            # Score-based matching for better accuracy
+            best_match = None
+            best_score = 0
+            
             for window in windows:
-                if window.title:  # Skip windows with empty titles
-                    window_title_lower = window.title.lower()
+                window_title_lower = window.title.lower()
+                
+                # Calculate match score
+                score = 0
+                for keyword in target_keywords:
+                    if keyword == window_title_lower:
+                        score += 100  # Exact match
+                    elif keyword in window_title_lower:
+                        score += 50   # Contains keyword
+                    elif any(part in window_title_lower for part in keyword.split()):
+                        score += 25   # Partial word match
+                
+                if score > best_score:
+                    best_score = score
+                    best_match = window
+            
+            # Activate best match if score is good enough
+            if best_match and best_score >= 25:
+                try:
+                    print(f"✅ Found window: {best_match.title} (score: {best_score})")
                     
-                    # Check if any keyword matches
-                    for keyword in target_keywords:
-                        if keyword in window_title_lower:
-                            try:
-                                print(f"✅ Found window: {window.title}")
-                                
-                                # Different activation methods for reliability
-                                if window.isMinimized:
-                                    window.restore()
-                                
-                                window.activate()
-                                time.sleep(0.1)  # Small delay for window to activate
-                                
-                                # Force focus with pyautogui click
-                                if window.left >= 0 and window.top >= 0:
-                                    pyautogui.click(window.left + 100, window.top + 50)
-                                
-                                self.speak(f"Switched to {app_name}")
-                                return True
-                                
-                            except Exception as e:
-                                print(f"⚠️ Could not activate {window.title}: {e}")
-                                continue
+                    # Enhanced activation sequence
+                    if best_match.isMinimized:
+                        best_match.restore()
+                        time.sleep(0.1)
+                    
+                    best_match.activate()
+                    time.sleep(0.2)
+                    
+                    # Force focus with click if needed
+                    try:
+                        center_x = best_match.left + best_match.width // 2
+                        center_y = best_match.top + best_match.height // 2
+                        pyautogui.click(center_x, center_y)
+                    except:
+                        pass
+                    
+                    self.speak(f"Switched to {app_name}")
+                    return True
+                    
+                except Exception as e:
+                    print(f"⚠️ Could not activate {best_match.title}: {e}")
             
-            # If not found, try to open it
-            print(f"❌ Window not found for: {app_name}")
-            self.speak(f"{app_name} is not running. Let me open it for you.")
-            self.open_application_smart(app_name)
+            # If no good match found
+            print(f"❌ No suitable window found for: {app_name}")
+            self.speak(f"{app_name} doesn't appear to be running. Should I open it?")
             return False
             
-        except ImportError:
-            self.speak("Window switching requires pygetwindow. Please install it.")
-            return False
         except Exception as e:
             print(f"❌ Window switching error: {e}")
             self.speak(f"Could not switch to {app_name}")
             return False
-    
+
     def open_application_smart(self, app_name: str):
         """Smart application opener with fuzzy matching"""
         app_map = {
@@ -481,7 +738,7 @@ class EnhancedJarvis:
         
         # Try direct launch
         os.system(f"start {app_name}")
-    
+
     def open_folder_smart(self, folder_name: str):
         """Smart folder opener"""
         folder_map = {
@@ -495,22 +752,17 @@ class EnhancedJarvis:
         
         folder_path = folder_map.get(folder_name.lower(), os.path.expanduser("~"))
         os.startfile(folder_path)
-    
+
     def type_text(self, text: str):
         """Type text using pyautogui"""
         try:
-            import pyautogui
             pyautogui.typewrite(text, interval=0.05)
         except ImportError:
             self.speak("Text typing requires pyautogui. Please install it.")
-    
-    
+
     def control_window(self, operation: str):
         """Control current window with better error handling"""
         try:
-            import pyautogui
-            import pygetwindow as gw
-            
             # Get the active window
             active_window = gw.getActiveWindow()
             
@@ -580,7 +832,7 @@ class EnhancedJarvis:
             'edge': ['edge', 'microsoft edge'],
             'explorer': ['explorer', 'file explorer', 'files'],
             'cmd': ['command prompt', 'cmd', 'terminal'],
-            'code': ['vs code', 'visual studio code', 'vscode', 'visual studio', 'visual studios'],  # Added visual studio
+            'code': ['vs code', 'visual studio code', 'vscode', 'visual studio', 'visual studios'],
             'spotify': ['spotify', 'music'],
             'discord': ['discord'],
             'slack': ['slack'],
@@ -595,65 +847,44 @@ class EnhancedJarvis:
         }
         
         # Check for switch/focus commands FIRST
-        if "switch to" in command or "focus" in command or "go to" in command or "open" in command:
-            # Import here to avoid errors if not installed
-            try:
-                import pygetwindow as gw
-            except ImportError:
-                self.speak("Window switching requires pygetwindow. Please install it with: pip install pygetwindow")
-                return False
-            
+        if "switch to" in command or "focus" in command or "go to" in command:
             # First try to match with our predefined apps
             for app_cmd, keywords in apps.items():
                 if any(keyword in command for keyword in keywords):
-                    if "switch to" in command or "focus" in command or "go to" in command:
-                        # Try to switch to existing window
-                        try:
-                            # Get all windows
-                            all_windows = gw.getAllTitles()
-                            
-                            # Filter out empty titles
-                            all_windows = [w for w in all_windows if w.strip()]
-                            
-                            # Try to find matching window
-                            found = False
-                            for window_title in all_windows:
-                                # Check if any keyword matches the window title
-                                for keyword in keywords:
-                                    if keyword.lower() in window_title.lower():
-                                        try:
-                                            window = gw.getWindowsWithTitle(window_title)[0]
-                                            window.activate()  # Bring to front
-                                            window.maximize()  # Optional: maximize the window
-                                            self.speak(f"Switching to {keywords[0]}")
-                                            return True
-                                        except Exception as e:
-                                            print(f"Error activating window: {e}")
-                                            continue
-                            
-                            # If window not found, try to open the app
-                            if not found:
-                                self.speak(f"{keywords[0]} is not running. Opening it now...")
-                                os.system(f"start {app_cmd}")
-                                return True
-                                
-                        except Exception as e:
-                            print(f"Error in window switching: {e}")
-                            self.speak(f"Could not switch to {keywords[0]}")
+                    try:
+                        # Get all windows
+                        all_windows = gw.getAllTitles()
+                        
+                        # Filter out empty titles
+                        all_windows = [w for w in all_windows if w.strip()]
+                        
+                        # Try to find matching window
+                        found = False
+                        for window_title in all_windows:
+                            # Check if any keyword matches the window title
+                            for keyword in keywords:
+                                if keyword.lower() in window_title.lower():
+                                    try:
+                                        window = gw.getWindowsWithTitle(window_title)[0]
+                                        if window.isMinimized:
+                                            window.restore()
+                                        window.activate()  # Bring to front
+                                        found = True
+                                        self.speak(f"Switching to {keywords[0]}")
+                                        return True
+                                    except Exception as e:
+                                        print(f"Error activating window: {e}")
+                                        continue
+                        
+                        # If window not found, inform user
+                        if not found:
+                            self.speak(f"{keywords[0]} is not running. Would you like me to open it?")
                             return True
-                    
-                    elif "open" in command or "launch" in command or "start" in command:
-                        # Open new instance
-                        self.speak(f"Opening {keywords[0]}...")
-                        try:
-                            if self.system == "Windows":
-                                os.system(f"start {app_cmd}")
-                            else:
-                                subprocess.Popen([app_cmd])
-                            return True
-                        except Exception as e:
-                            self.speak(f"Could not open {keywords[0]}. It may not be installed.")
-                            return True
+                            
+                    except Exception as e:
+                        print(f"Error in window switching: {e}")
+                        self.speak(f"Could not switch to {keywords[0]}")
+                        return True
             
             # If no predefined app matched, try generic window search
             try:
@@ -669,8 +900,9 @@ class EnhancedJarvis:
                         if search_term.lower() in window_title.lower():
                             try:
                                 window = gw.getWindowsWithTitle(window_title)[0]
+                                if window.isMinimized:
+                                    window.restore()
                                 window.activate()
-                                window.maximize()
                                 self.speak(f"Switching to {search_term}")
                                 return True
                             except:
@@ -682,14 +914,27 @@ class EnhancedJarvis:
                     
             except Exception as e:
                 print(f"Generic window search error: {e}")
+        
+        # Handle OPEN commands (new instances)
+        elif "open" in command or "launch" in command or "start" in command:
+            for app_cmd, keywords in apps.items():
+                if any(keyword in command for keyword in keywords):
+                    self.speak(f"Opening {keywords[0]}...")
+                    try:
+                        if self.system == "Windows":
+                            os.system(f"start {app_cmd}")
+                        else:
+                            subprocess.Popen([app_cmd])
+                        return True
+                    except Exception as e:
+                        self.speak(f"Could not open {keywords[0]}. It may not be installed.")
+                        return True
                 
         return False
 
     def switch_windows_alt_tab(self, direction="forward"):
         """Use Alt+Tab to switch between windows"""
         try:
-            import pyautogui
-            
             if direction == "forward":
                 pyautogui.keyDown('alt')
                 pyautogui.press('tab')
@@ -951,13 +1196,6 @@ class EnhancedJarvis:
         screenshot_path = os.path.join(screenshots_dir, f"jarvis_screenshot_{timestamp}.png")
         
         try:
-            # Check if pyautogui is available
-            try:
-                import pyautogui
-            except ImportError:
-                self.speak("Screenshot feature requires pyautogui to be installed. Install it with: pip install pyautogui")
-                return
-            
             # Take screenshot
             print(f"📸 Taking screenshot...")
             screenshot = pyautogui.screenshot()
@@ -1096,20 +1334,71 @@ class EnhancedJarvis:
                 time.sleep(1)
 
     def run(self, mode="active"):
-        """Main execution loop with different modes"""
+        """Enhanced main execution loop with better error recovery"""
+        consecutive_errors = 0
+        max_consecutive_errors = 5
+        
         try:
-            if mode == "passive":
-                self.passive_listening_mode()
-            else:
-                self.active_listening_mode()
-                
-        except KeyboardInterrupt:
-            print("\n⚠️ Interrupted by user")
-        except Exception as e:
-            print(f"❌ Critical error: {e}")
+            while self.is_running and consecutive_errors < max_consecutive_errors:
+                try:
+                    if mode == "passive":
+                        self.passive_listening_mode()
+                    else:
+                        self.active_listening_mode()
+                    
+                    # Reset error counter on successful operation
+                    consecutive_errors = 0
+                    
+                except KeyboardInterrupt:
+                    print("\n⚠️ Interrupted by user")
+                    break
+                except Exception as e:
+                    consecutive_errors += 1
+                    print(f"❌ Error #{consecutive_errors}: {e}")
+                    
+                    if consecutive_errors < max_consecutive_errors:
+                        self.speak("I encountered an error. Recovering...")
+                        time.sleep(1)  # Brief pause before retry
+                    else:
+                        print("❌ Too many consecutive errors. Shutting down.")
+                        self.speak("Too many errors occurred. Shutting down for safety.")
+                        break
+                        
         finally:
-            self.speak("System shutting down. Goodbye!")
+            self.cleanup()
+
+    def cleanup(self):
+        """Clean shutdown procedure"""
+        try:
             self.is_running = False
+            
+            # Save command history if enabled
+            if hasattr(self, 'command_history') and self.command_history:
+                self._save_command_history()
+            
+            # Final farewell
+            farewell_messages = [
+                "System shutting down. Goodbye!",
+                "Until next time. Stay safe!",
+                "Jarvis going offline. Have a great day!"
+            ]
+            self.speak(random.choice(farewell_messages))
+            
+        except Exception as e:
+            print(f"⚠️ Cleanup error: {e}")
+
+    def _save_command_history(self):
+        """Save command history to file"""
+        try:
+            import json
+            history_file = Path.home() / ".jarvis" / "command_history.json"
+            history_file.parent.mkdir(exist_ok=True)
+            
+            with open(history_file, 'w') as f:
+                json.dump(self.command_history, f, indent=2, default=str)
+                
+        except Exception as e:
+            print(f"⚠️ Could not save command history: {e}")
 
 def main():
     """Main entry point"""

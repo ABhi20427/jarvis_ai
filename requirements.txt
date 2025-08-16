@@ -38,3 +38,17 @@ playsound>=1.3.0  # For playing audio files
 
 # Platform-specific (Linux)
 # python-xlib>=0.33  # Uncomment for Linux X11 features
+# Enhanced audio processing
+scipy>=1.10.0
+numpy>=1.24.0
+
+# Better window management
+pygetwindow>=0.0.9
+pyautogui>=0.9.54
+
+# Performance monitoring
+memory-profiler>=0.60.0
+
+# Enhanced text processing
+python-Levenshtein>=0.20.0
+fuzzywuzzy>=0.18.0

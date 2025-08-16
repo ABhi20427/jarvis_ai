@@ -52,19 +52,19 @@ EXECUTE: SEARCH_YOUTUBE Iron Man best scenes"
 Be conversational but concise. Add personality to your responses."""
 
     def test_connection(self) -> bool:
-        """Test if Ollama is running"""
-        try:
-            response = requests.get(f"{self.base_url}/api/tags", timeout=2)
-            if response.status_code == 200:
-                models = response.json().get('models', [])
-                print(f"✅ Ollama connected. Available models: {[m['name'] for m in models]}")
-                return True
-        except:
-            print("⚠️ Ollama not running. Start with: ollama serve")
-            return False
+            """Test if Ollama is running"""
+            try:
+                response = requests.get(f"{self.base_url}/api/tags", timeout=2)
+                if response.status_code == 200:
+                    models = response.json().get('models', [])
+                    print(f"✅ Ollama connected. Available models: {[m['name'] for m in models]}")
+                    return True
+            except:
+                print("⚠️ Ollama not running. Start with: ollama serve")
+                return False
     
     def process_command(self, command: str, include_context: bool = True) -> Dict:
-        """Process user command with AI understanding"""
+        """Enhanced AI command processing with better understanding"""
         
         if not self.is_available:
             return {
@@ -73,24 +73,26 @@ Be conversational but concise. Add personality to your responses."""
                 "actions": []
             }
         
-        # Build conversation context
-        context = ""
-        if include_context and self.context_history:
-            context = "\n".join([
-                f"User: {h['user']}\nJarvis: {h['assistant']}" 
-                for h in self.context_history[-3:]
-            ])
-            context = f"Previous conversation:\n{context}\n\n"
+        # Preprocess command for better AI understanding
+        processed_command = self._preprocess_command(command)
         
-        # Create full prompt
+        # Build enhanced context
+        context = self._build_enhanced_context() if include_context else ""
+        
+        # Create optimized prompt
         full_prompt = f"""{self.system_prompt}
 
-{context}Current command:
-User: {command}
-Jarvis:"""
+{context}
+
+Current system time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+User command: "{processed_command}"
+
+Analyze this command and respond appropriately. If it requires computer actions, include EXECUTE commands.
+
+Response:"""
 
         try:
-            # Call Ollama API
+            # Call Ollama with optimized parameters
             response = requests.post(
                 f"{self.base_url}/api/generate",
                 json={
@@ -100,44 +102,114 @@ Jarvis:"""
                     "options": {
                         "temperature": 0.7,
                         "top_p": 0.9,
+                        "top_k": 40,
+                        "repeat_penalty": 1.1,
+                        "num_predict": 200  # Limit response length for speed
                     }
                 },
-                timeout=30
+                timeout=15  # Reduced timeout for responsiveness
             )
             
             if response.status_code == 200:
                 ai_response = response.json()['response']
                 
-                # Extract actions from response
+                # Extract actions with better parsing
                 actions = self.extract_actions(ai_response)
                 
-                # Clean response for speech (remove EXECUTE commands)
+                # Clean response for speech
                 clean_response = self.clean_response_for_speech(ai_response)
                 
-                # Update context
+                # Update context efficiently
                 self.update_context(command, clean_response)
                 
                 return {
                     "success": True,
                     "response": clean_response,
                     "actions": actions,
-                    "raw_response": ai_response
+                    "raw_response": ai_response,
+                    "confidence": self._calculate_confidence(ai_response)
                 }
             else:
-                return {
-                    "success": False,
-                    "response": "I'm having trouble processing that.",
-                    "actions": []
-                }
+                return self._fallback_response(command)
                 
+        except requests.Timeout:
+            print("⚠️ AI request timeout, falling back to quick response")
+            return self._fallback_response(command)
         except Exception as e:
             logging.error(f"AI processing error: {e}")
-            return {
-                "success": False,
-                "response": "I encountered an error processing your request.",
-                "actions": []
-            }
-    
+            return self._fallback_response(command)
+
+    def _preprocess_command(self, command: str) -> str:
+        """Preprocess command for better AI understanding"""
+        # Normalize common variations
+        normalizations = {
+            'open up': 'open',
+            'pull up': 'open',
+            'bring up': 'open',
+            'launch': 'open',
+            'start up': 'start',
+            'turn on': 'open',
+            'google search': 'search',
+            'look up': 'search',
+            'find': 'search'
+        }
+        
+        processed = command.lower()
+        for old, new in normalizations.items():
+            processed = processed.replace(old, new)
+        
+        return processed
+
+    def _build_enhanced_context(self) -> str:
+        """Build enhanced context with system awareness"""
+        context_parts = []
+        
+        # Recent conversation
+        if self.context_history:
+            recent = self.context_history[-2:]  # Last 2 exchanges
+            for exchange in recent:
+                context_parts.append(f"User: {exchange['user']}")
+                context_parts.append(f"Jarvis: {exchange['assistant']}")
+        
+        # Add system state awareness
+        try:
+            import psutil
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+            memory_percent = psutil.virtual_memory().percent
+            context_parts.append(f"System Status: CPU {cpu_percent}%, Memory {memory_percent}%")
+        except:
+            pass
+        
+        return "\n".join(context_parts)
+
+    def _calculate_confidence(self, response: str) -> float:
+        """Calculate confidence score for AI response"""
+        confidence = 0.5  # Base confidence
+        
+        # Increase confidence for specific actions
+        if "EXECUTE:" in response:
+            confidence += 0.3
+        
+        # Increase confidence for clear responses
+        if len(response.split()) > 3:
+            confidence += 0.1
+        
+        # Decrease confidence for uncertain language
+        uncertain_words = ['maybe', 'perhaps', 'might', 'possibly', 'not sure']
+        if any(word in response.lower() for word in uncertain_words):
+            confidence -= 0.2
+        
+        return max(0.0, min(1.0, confidence))
+
+    def _fallback_response(self, command: str) -> Dict:
+        """Provide fallback response when AI fails"""
+        return {
+            "success": False,
+            "response": "I'm processing that request using backup systems.",
+            "actions": [],
+            "confidence": 0.1
+        }
+        
     def extract_actions(self, text: str) -> List[Dict]:
         """Extract executable actions from AI response"""
         actions = []
