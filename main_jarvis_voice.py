@@ -18,23 +18,92 @@ import requests
 from pathlib import Path
 import pygetwindow as gw
 import pyautogui
+import signal
+import sys
 
-# Add after existing imports
+# AI imports
 from ai_brain_local import JarvisLocalAI
 from config import AIConfig
 
-# Initialize TTS engine with better error handling
-try:
-    engine = pyttsx3.init()
-    engine.setProperty('rate', 180)
-    engine.setProperty('volume', 0.9)
-    # Test the engine immediately
-    engine.say("Initializing")
-    engine.runAndWait()
-except Exception as e:
-    print(f"TTS Engine initialization error: {e}")
-    engine = None
 
+# Initialize TTS engine with better error handling
+class TTSManager:
+    """Thread-safe TTS Manager to prevent run loop conflicts"""
+    
+    def __init__(self):
+        self.is_speaking = False
+        self.speech_lock = threading.Lock()
+        self._engine = None
+        self._initialize_engine()
+    
+    def _initialize_engine(self):
+        """Initialize TTS engine once"""
+        try:
+            self._engine = pyttsx3.init()
+            self._engine.setProperty('rate', 180)
+            self._engine.setProperty('volume', 0.9)
+            print("✅ TTS Manager initialized successfully")
+        except Exception as e:
+            print(f"❌ TTS Manager initialization failed: {e}")
+            self._engine = None
+    
+    def speak_text(self, text, rate=180, volume=0.9, timeout=10):
+        """Speak text with thread safety and timeout"""
+        if not self._engine:
+            print(f"[TTS Not Available] Would have said: {text}")
+            return False
+            
+        with self.speech_lock:
+            try:
+                if self.is_speaking:
+                    return False  # Skip if already speaking
+                
+                self.is_speaking = True
+                
+                # Use the existing engine instead of creating new ones
+                self._engine.setProperty('rate', rate)
+                self._engine.setProperty('volume', volume)
+                self._engine.say(text)
+                
+                
+                # Use threading with timeout to prevent hanging
+                import threading
+                import time
+                
+                def run_tts():
+                    try:
+                        self._engine.runAndWait()
+                    except Exception as e:
+                        print(f"TTS thread error: {e}")
+                
+                tts_thread = threading.Thread(target=run_tts, daemon=True)
+                tts_thread.start()
+                tts_thread.join(timeout=timeout)
+                
+                if tts_thread.is_alive():
+                    print(f"TTS timeout after {timeout} seconds, skipping speech")
+                    self.is_speaking = False
+                    return False
+                
+                self.is_speaking = False
+                return True
+                
+            except Exception as e:
+                self.is_speaking = False
+                print(f"TTS Manager Error: {e}")
+                # Try to reinitialize engine if it failed
+                self._initialize_engine()
+                return False
+    
+    def cleanup(self):
+        """Clean up TTS engine"""
+        try:
+            if self._engine:
+                self._engine.stop()
+                del self._engine
+                self._engine = None
+        except:
+            pass
 class EnhancedJarvis:
     def __init__(self):
         # Audio settings
@@ -64,22 +133,27 @@ class EnhancedJarvis:
         self.command_history = []
         self.context = {}
         
-        # Initialize AI Brain
-        self.init_ai_brain()
-        
+        # Initialize TTS Manager FIRST (before AI brain)
+        self.tts_manager = TTSManager()
+
         # Wake words
         self.wake_words = ["jarvis", "hey jarvis", "okay jarvis", "computer"]
-        
+
         # Initialize responses
         self.init_responses()
-        
+
         # Build command cache for faster processing
         self._build_command_cache()
-        
+
         # Optimize performance
         self._optimize_performance()
-        
+
+        # Initialize AI Brain (AFTER TTS Manager)
+        self.init_ai_brain()
+
         print("🤖 Enhanced Jarvis System Initializing...")
+        # Add small delay to ensure TTS is ready
+        time.sleep(0.5)
         self.startup_sequence()
 
     def _optimize_performance(self):
@@ -131,7 +205,9 @@ class EnhancedJarvis:
                 if self.ai.is_available:
                     self.ai_enabled = True
                     print("🧠 AI Brain initialized successfully")
-                    self.speak("AI capabilities online. I'm now smarter than ever.", wait=False)
+                    # Only speak if TTS manager is available
+                    if hasattr(self, 'tts_manager'):
+                        self.speak("AI capabilities online. I'm now smarter than ever.", wait=False)
                 else:
                     self.ai_enabled = False
                     print("⚠️ AI Brain offline - Ollama not running")
@@ -252,7 +328,7 @@ class EnhancedJarvis:
         return best_match
 
     def startup_sequence(self):
-        """Jarvis-like startup sequence"""
+        """Jarvis-like startup sequence with fixed TTS"""
         startup_messages = [
             "System initialization complete.",
             f"Welcome back, {self.user_name}.",
@@ -260,51 +336,28 @@ class EnhancedJarvis:
             "Ready for your commands."
         ]
         
-        for message in startup_messages:
+        for i, message in enumerate(startup_messages):
             print(f"🤖 {message}")
-            self.speak(message, wait=False)
-            time.sleep(0.5)
+            # Use blocking speech for startup sequence for proper timing
+            self.speak(message, wait=True)
+            if i < len(startup_messages) - 1:  # Don't wait after last message
+                time.sleep(0.8)
 
     def speak(self, text, wait=True, priority=False):
-        """Fixed TTS method without run loop conflicts"""
         print(f"🔊 Jarvis: {text}")
         
-        try:
-            # Method: Use a separate thread for each speak operation
-            def speak_thread():
-                try:
-                    # Create a fresh engine for this operation
-                    temp_engine = pyttsx3.init()
-                    temp_engine.setProperty('rate', 180)
-                    temp_engine.setProperty('volume', 0.9)
-                    temp_engine.say(text)
-                    temp_engine.runAndWait()
-                    # Important: Clean up the engine
-                    temp_engine.stop()
-                    del temp_engine
-                except RuntimeError as e:
-                    if "run loop already started" in str(e):
-                        # If run loop error, just print
-                        print(f"[TTS Skipped - Engine Busy]: {text}")
-                    else:
-                        print(f"TTS Thread Error: {e}")
-                except Exception as e:
-                    print(f"TTS Error: {e}")
-            
-            if wait:
-                # Blocking speech - run in current thread
-                speak_thread()
-            else:
-                # Non-blocking speech - run in separate thread
-                import threading
-                thread = threading.Thread(target=speak_thread, daemon=True)
-                thread.start()
-                if priority:
-                    thread.join()  # Wait for priority messages
-                    
-        except Exception as e:
-            print(f"❌ TTS Error: {e}")
-            print(f"[TTS Failed] Would have said: {text}")
+        def do_speak():
+            success = self.tts_manager.speak_text(text)
+            if not success:
+                print(f"[TTS Failed] Would have said: {text}")
+        
+        if wait:
+            do_speak()
+        else:
+            thread = threading.Thread(target=do_speak, daemon=True)
+            thread.start()
+            if priority:
+                thread.join(timeout=3)
 
     def get_random_response(self, response_type):
         """Get varied responses for natural interaction"""
@@ -1312,7 +1365,7 @@ class EnhancedJarvis:
         while self.is_running:
             try:
                 # Listen continuously
-                audio = self.listen_for_audio(timeout=None, phrase_limit=10)
+                audio = self.listen_for_audio(timeout=5, phrase_limit=10)
                 
                 if audio:
                     command = self.recognize_speech(audio)
@@ -1372,6 +1425,9 @@ class EnhancedJarvis:
         try:
             self.is_running = False
             
+            if hasattr(self, 'tts_manager'):
+                self.tts_manager.cleanup()
+            
             # Save command history if enabled
             if hasattr(self, 'command_history') and self.command_history:
                 self._save_command_history()
@@ -1400,8 +1456,16 @@ class EnhancedJarvis:
         except Exception as e:
             print(f"⚠️ Could not save command history: {e}")
 
+def signal_handler(signum, frame):
+    """Handle Ctrl+C interrupt"""
+    print("\n⚠️ Interrupt signal received. Shutting down...")
+    sys.exit(0)
+
 def main():
     """Main entry point"""
+    # Set up signal handler for Ctrl+C
+    signal.signal(signal.SIGINT, signal_handler)
+    
     print("""
     ╔══════════════════════════════════════════╗
     ║     JARVIS - Advanced Voice Assistant    ║
@@ -1419,12 +1483,20 @@ def main():
     mode = "passive" if choice == "2" else "active"
     
     # Initialize and run Jarvis
-    jarvis = EnhancedJarvis()
-    
-    print(f"\n🚀 Starting Jarvis in {mode} mode...")
-    print("Press Ctrl+C to exit\n")
-    
-    jarvis.run(mode=mode)
+    try:
+        jarvis = EnhancedJarvis()
+        
+        print(f"\n🚀 Starting Jarvis in {mode} mode...")
+        print("Press Ctrl+C to exit\n")
+        
+        jarvis.run(mode=mode)
+        
+    except KeyboardInterrupt:
+        print("\n⚠️ Program interrupted by user")
+    except Exception as e:
+        print(f"\n❌ Fatal error: {e}")
+    finally:
+        print("Shutting down...")
 
 if __name__ == "__main__":
     main()

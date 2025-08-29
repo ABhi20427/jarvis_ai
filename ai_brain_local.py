@@ -52,16 +52,16 @@ EXECUTE: SEARCH_YOUTUBE Iron Man best scenes"
 Be conversational but concise. Add personality to your responses."""
 
     def test_connection(self) -> bool:
-            """Test if Ollama is running"""
-            try:
-                response = requests.get(f"{self.base_url}/api/tags", timeout=2)
-                if response.status_code == 200:
-                    models = response.json().get('models', [])
-                    print(f"✅ Ollama connected. Available models: {[m['name'] for m in models]}")
-                    return True
-            except:
-                print("⚠️ Ollama not running. Start with: ollama serve")
-                return False
+        """Test if Ollama is running"""
+        try:
+            response = requests.get(f"{self.base_url}/api/tags", timeout=2)
+            if response.status_code == 200:
+                models = response.json().get('models', [])
+                print(f"✅ Ollama connected. Available models: {[m['name'] for m in models]}")
+                return True
+        except:
+            print("⚠️ Ollama not running. Start with: ollama serve")
+            return False
     
     def process_command(self, command: str, include_context: bool = True) -> Dict:
         """Enhanced AI command processing with better understanding"""
@@ -133,7 +133,7 @@ Response:"""
                 return self._fallback_response(command)
                 
         except requests.Timeout:
-            print("⚠️ AI request timeout, falling back to quick response")
+            pass  # Timeout handled by fallback
             return self._fallback_response(command)
         except Exception as e:
             logging.error(f"AI processing error: {e}")
@@ -294,24 +294,5 @@ Response:"""
     
     def analyze_screen(self, screenshot_path: str) -> str:
         """Analyze screenshot using vision model (if available)"""
-        # This would require LLaVA model: ollama pull llava
-        try:
-            with open(screenshot_path, 'rb') as f:
-                image_data = f.read().hex()
-            
-            response = requests.post(
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": "llava",
-                    "prompt": "Describe what you see in this screenshot",
-                    "images": [image_data]
-                },
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                return response.json()['response']
-        except:
-            return "Vision analysis not available. Install LLaVA model."
-        
-        return "Could not analyze screenshot"
+        # Perplexity API doesn't support image analysis yet
+        return "Vision analysis not available with Perplexity API. Screenshot analysis coming soon."

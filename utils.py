@@ -269,21 +269,17 @@ class AudioUtils:
             import sounddevice as sd
             import numpy as np
             
-            print(f"Testing microphone for {duration} seconds...")
             recording = sd.rec(int(duration * 44100), samplerate=44100, channels=1)
             sd.wait()
             
             # Check if we got any sound
             max_amplitude = np.max(np.abs(recording))
             if max_amplitude > 0.01:  # Threshold for detecting sound
-                print("✅ Microphone is working!")
                 return True
             else:
-                print("⚠️ No sound detected. Check microphone connection.")
                 return False
                 
         except Exception as e:
-            print(f"❌ Microphone test failed: {e}")
             return False
     
     @staticmethod
@@ -300,7 +296,7 @@ class AudioUtils:
             sd.play(waveform, sample_rate)
             sd.wait()
         except Exception as e:
-            print(f"Could not play beep: {e}")
+            pass
 
 class TextProcessor:
     """Text processing utilities"""
@@ -362,21 +358,4 @@ class TextProcessor:
             print(f"Fuzzy matching error: {e}")
             return None
 
-# Test utilities function
-def test_all_utilities():
-    """Test all utility functions"""
-    print("Testing System Utilities...")
-    print(SystemUtils.get_system_info())
-    
-    print("\nTesting File Utilities...")
-    print(f"Home directory size: {FileUtils.format_bytes(FileUtils.get_directory_size(Path.home() / 'Documents'))}")
-    
-    print("\nTesting Audio Utilities...")
-    AudioUtils.test_microphone()
-    
-    print("\nTesting Text Processor...")
-    print(f"Numbers in 'Meet at 3:30 PM': {TextProcessor.extract_numbers('Meet at 3:30 PM')}")
-    print(f"Time in 'Meet at 3:30 PM': {TextProcessor.extract_time('Meet at 3:30 PM')}")
-
-if __name__ == "__main__":
-    test_all_utilities()
+# Test utilities function removed - no debug prints in production

@@ -17,7 +17,7 @@ keyboard>=0.13.5  # For keyboard shortcuts (optional)
 
 # Web and APIs
 requests>=2.31.0
-wikipedia-api>=0.6.0  # For Wikipedia searches (optional)
+wikipedia>=1.4.0  # For Wikipedia searches
 
 # Data Processing
 pandas>=2.0.0
